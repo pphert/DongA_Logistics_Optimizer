@@ -4,6 +4,7 @@ import folium
 from streamlit_folium import st_folium
 from ortools.constraint_solver import routing_enums_pb2, pywrapcp
 import math
+import requests
 
 st.set_page_config(page_title="Dong A Logistics Optimizer", layout="wide")
 
@@ -114,12 +115,33 @@ st.sidebar.header("📏 3. Giới hạn Ghép chiều về")
 
 st.sidebar.info("💡 **Logic:** Chỉ ghép chiều về nếu chi phí phát sinh do đi vòng (Detour) nhỏ hơn chi phí chạy rỗng (Empty-leg) tiết kiệm được.")
 
+# --- HÀM LẤY KHOẢNG CÁCH THỰC TẾ TỪ BẢN ĐỒ ---
+def get_driving_distance(lat1, lon1, lat2, lon2):
+    """Gọi OSRM API lấy khoảng cách đường bộ thực tế (km). Nếu lỗi sẽ tự dùng đường chim bay."""
+    try:
+        url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=false"
+        response = requests.get(url, timeout=3)
+        if response.status_code == 200:
+            data = response.json()
+            if data["code"] == "Ok":
+                return data["routes"][0]["distance"] / 1000.0  # API trả về mét, đổi ra km
+    except Exception:
+        pass # Bỏ qua lỗi để chạy phương án dự phòng bên dưới
+    
+    # Phương án dự phòng (Fallback): Đường chim bay * Hệ số Detour 1.3
+    R = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    return (R * c) * 1.3
+
+
 with st.sidebar.expander("⚖️ Phân tích Hòa vốn (Break-even)", expanded=True):
-    # 1. Tự động tính Quãng đường rỗng trung bình (Depot -> Delivery)
-    avg_empty_km = 40.0  # Mặc định dự phòng an toàn
+    # 1. Tự động tính Quãng đường rỗng trung bình (Depot -> Delivery) bằng OSRM
+    avg_empty_km = 40.0  # Mặc định an toàn
     
     if 'df' in locals() and not df.empty:
-        # Nhận diện tên cột (Type hoặc Loại điểm)
         col_type = 'Type' if 'Type' in df.columns else 'Loại điểm'
         col_lat = 'Vĩ độ' if 'Vĩ độ' in df.columns else 'Lat'
         col_lon = 'Kinh độ' if 'Kinh độ' in df.columns else 'Lng'
@@ -135,16 +157,9 @@ with st.sidebar.expander("⚖️ Phân tích Hòa vốn (Break-even)", expanded=
                 lat1, lon1 = depot_row[col_lat], depot_row[col_lon]
                 lat2, lon2 = row[col_lat], row[col_lon]
                 
-                # Công thức Haversine tính khoảng cách GPS (Đường chim bay)
-                R = 6371.0 # Bán kính trái đất (km)
-                dlat = math.radians(lat2 - lat1)
-                dlon = math.radians(lon2 - lon1)
-                a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
-                c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-                dist_km = R * c
-                
-                # Nhân thêm hệ số ngoằn ngoèo thực tế (Detour Index = 1.3)
-                total_dist += (dist_km * 1.3)
+                # Truyền tọa độ vào hàm gọi Bản đồ thực tế
+                dist_km = get_driving_distance(lat1, lon1, lat2, lon2)
+                total_dist += dist_km
                 
             # Chia trung bình
             avg_empty_km = total_dist / len(deliveries)
@@ -153,10 +168,10 @@ with st.sidebar.expander("⚖️ Phân tích Hòa vốn (Break-even)", expanded=
         "Quãng đường rỗng trung bình (km):",
         value=f"{avg_empty_km:.1f} km",
         disabled=True,
-        help="Hệ thống tự động tính: Khoảng cách từ Depot đến các điểm Delivery, đã nhân hệ số đường bộ (1.3) để sát thực tế."
+        help="Hệ thống tự động quét API OSRM (Bản đồ đường bộ) từ Kho đến các điểm Giao hàng."
     )
     
-    # 2. Chi phí chạy rỗng tránh được (Hệ thống tự tính)
+    # 2. Chi phí chạy rỗng tránh được
     saved_cost = avg_empty_km * fuel_cost_per_km
     st.text_input(
         "Chi phí rỗng tránh được (VNĐ):",
@@ -165,26 +180,25 @@ with st.sidebar.expander("⚖️ Phân tích Hòa vốn (Break-even)", expanded=
         help=f"Điểm hòa vốn = {avg_empty_km:.1f} km × {fuel_cost_per_km:,.0f} đ/km. Đây là ngân sách tối đa cho phép để đi vòng."
     )
     
-    # 3. Tỷ lệ an toàn lợi nhuận (Người dùng nhập)
+    # 3. Tỷ lệ an toàn lợi nhuận
     safety_margin = st.slider(
         "Ngưỡng cho phép đi vòng (%):",
         min_value=50, max_value=100, value=80, step=5,
         help="Để có lợi nhuận, khoảng cách đi vòng phải thấp hơn điểm hòa vốn (Khuyên dùng 70-80%)."
     )
-    
+
 # --- TÍNH TOÁN KẾT QUẢ ĐẦU RA ---
-# 1. Tính khoảng cách kết nối tối đa (Từ điểm Delivery cuối sang điểm Pickup đầu)
 max_del_to_pic_km = avg_empty_km * (safety_margin / 100.0)
 
-# 2. Tổng giới hạn quãng đường (Chạy ngầm để truyền vào Google OR-Tools Solver)
+# Tổng giới hạn quãng đường chạy ngầm vào thuật toán OR-Tools
 base_round_trip = avg_empty_km * 2
 max_distance_km = int(base_round_trip + max_del_to_pic_km)
 
-# Hiển thị trực quan trên giao diện
 st.sidebar.markdown(f"**Khoảng cách TỐI ĐA từ điểm Giao $\\rightarrow$ Lấy:** `{max_del_to_pic_km:.1f} km`")
 st.sidebar.caption(
-    f"*(Luật ghép chuyến: Xe chỉ chạy sang điểm Pickup nếu khoảng cách $\le$ {max_del_to_pic_km:.1f} km)*"
+    f"*(Luật ghép chuyến: Xe chỉ chạy sang điểm Pickup nếu khoảng cách đường bộ $\le$ {max_del_to_pic_km:.1f} km)*"
 )
+
 # --- PHẦN 1: QUẢN LÝ DỮ LIỆU ĐƠN HÀNG ---
 st.subheader("1. Dữ liệu Đơn hàng & Tọa độ")
 
