@@ -9,7 +9,7 @@ import requests
 st.set_page_config(page_title="Dong A Logistics Optimizer", layout="wide")
 
 st.title("🚛 Hệ thống Tối ưu Tuyến đường & Kiểm soát Chi phí")
-st.caption("Công nghệ: Google OR-Tools AI | Tối ưu bằng Tiền thật (VNĐ) & Giới hạn Quãng đường")
+
 
 # --- HÀM TÍNH KHOẢNG CÁCH VÀ MA TRẬN OSRM ---
 def haversine_distance(lat1, lon1, lat2, lon2):
