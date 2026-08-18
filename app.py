@@ -41,7 +41,6 @@ if "fleet_size" not in st.session_state:
 
 num_vehicles = st.sidebar.number_input("Số lượng xe điều phối:", min_value=1, step=1, value=st.session_state.fleet_size)
 
-# --- ĐOẠN CODE MỚI ---
 if "vehicle_df" not in st.session_state or st.session_state.fleet_size != num_vehicles:
     st.session_state.fleet_size = num_vehicles
     st.session_state.vehicle_df = pd.DataFrame({
@@ -57,8 +56,12 @@ edited_vehicles = st.sidebar.data_editor(
     disabled=["STT"]  # Khóa cột STT để người dùng không gõ nhầm
 )
 st.session_state.vehicle_df = edited_vehicles
+
 vehicle_names = edited_vehicles["Biển số xe"].astype(str).tolist()
 vehicle_capacities = edited_vehicles["Tải trọng (Tấn)"].astype(int).tolist()
+has_duplicate_vehicles = len(vehicle_names) != len(set(vehicle_names))
+if has_duplicate_vehicles:
+    st.sidebar.error("⚠️ LỖI: Biển số xe đang bị trùng lặp! Vui lòng sửa lại.")
 
 st.sidebar.markdown("---")
 st.sidebar.header("💰 2. Cấu hình Chi phí (VNĐ)")
