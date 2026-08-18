@@ -69,56 +69,24 @@ st.sidebar.header("💰 2. Cấu hình Chi phí (VNĐ)")
 fuel_cost_per_km = st.sidebar.number_input("Biến phí nhiên liệu (VNĐ/km):", min_value=0, value=5000, step=500)
 st.sidebar.caption(f"💵 Đang nhập: **{fuel_cost_per_km:,.0f} VNĐ**")
 
-with st.sidebar.expander("📋 Chi tiết Định phí xuất xe (VNĐ/chuyến)", expanded=False):
-    st.caption("Nhập các thành phần chi phí phân bổ cho mỗi chuyến:")
+with st.sidebar.expander("🛠️ Chi tiết cấu thành Định phí (Tháng)", expanded=False):
+    cost_depreciation = st.number_input("Khấu hao xe (VNĐ/tháng):", min_value=0, value=12000000, step=1000000)
+    cost_salary = st.number_input("Lương cố định tài xế/lơ xe (VNĐ/tháng):", min_value=0, value=10000000, step=500000)
+    cost_parking = st.number_input("Phí bến bãi, xuất/nhập bến (VNĐ/tháng):", min_value=0, value=3000000, step=200000)
+    cost_toll = st.number_input("Phí cầu đường cố định (VNĐ/tháng):", min_value=0, value=2000000, step=200000)
+    cost_insurance = st.number_input("Bảo hiểm, đăng kiểm (VNĐ/tháng):", min_value=0, value=1500000, step=100000)
+    cost_admin = st.number_input("Chi phí quản lý, điều vận (VNĐ/tháng):", min_value=0, value=1500000, step=100000)
     
-    cost_depreciation = st.number_input(
-        "1. Khấu hao xe (phân bổ):", 
-        min_value=0, value=150000, step=10000,
-        help="Khấu hao đầu kéo + rơ-moóc phân bổ cho 1 chuyến"
-    )
-    
-    cost_driver_salary = st.number_input(
-        "2. Lương cố định tài/phụ xe:", 
-        min_value=0, value=150000, step=10000,
-        help="Phần lương cứng cơ bản chia trên số chuyến định mức"
-    )
-    
-    cost_parking_terminal = st.number_input(
-        "3. Phí bến bãi, xuất/nhập bến:", 
-        min_value=0, value=50000, step=5000,
-        help="Tiền thuê bãi đậu xe + lệ phí ra vào bến/cảng"
-    )
-    
-    cost_toll = st.number_input(
-        "4. Phí cầu đường (BOT cố định):", 
-        min_value=0, value=50000, step=5000,
-        help="Phí qua trạm thu phí cố định cho chặng đường"
-    )
-    
-    cost_insurance_inspection = st.number_input(
-        "5. Bảo hiểm, đăng kiểm phân bổ:", 
-        min_value=0, value=50000, step=5000,
-        help="Phí bảo hiểm TNDS/vật chất + phí kiểm định phân bổ"
-    )
-    
-    cost_management_dispatch = st.number_input(
-        "6. Quản lý, điều vận phân bổ:", 
-        min_value=0, value=50000, step=5000,
-        help="Chi phí văn phòng, phần mềm và nhân viên điều độ"
-    )
+    monthly_trips = st.number_input("Số chuyến xe dự kiến / tháng:", min_value=1, value=60, step=5)
 
-# Tự động tính tổng định phí xuất xe từ 6 khoản trên
-fixed_vehicle_cost = (
-    cost_depreciation 
-    + cost_driver_salary 
-    + cost_parking_terminal 
-    + cost_toll 
-    + cost_insurance_inspection 
-    + cost_management_dispatch
-)
+# Tự động tính tổng định phí tháng và phân bổ cho 1 chuyến
+total_fixed_cost_month = (cost_depreciation + cost_salary + cost_parking + 
+                          cost_toll + cost_insurance + cost_admin)
 
-st.sidebar.markdown(f"**➔ Tổng định phí xuất xe:** `{fixed_vehicle_cost:,.0f} VNĐ/chuyến`")
+fixed_vehicle_cost = int(total_fixed_cost_month / monthly_trips) if monthly_trips > 0 else 0
+
+st.sidebar.markdown(f"**Định phí xuất xe:** `{fixed_vehicle_cost:,.0f} VNĐ/chuyến`")
+st.sidebar.caption(f"*(Tổng định phí: {total_fixed_cost_month:,.0f} đ/tháng ÷ {monthly_trips} chuyến)*")
 
 max_acceptable_cost = st.sidebar.number_input("Mức tối đa chi phí chấp nhận:", min_value=0, value=3000000, step=100000)
 st.sidebar.caption(f"💵 Đang nhập: **{max_acceptable_cost:,.0f} VNĐ**")
