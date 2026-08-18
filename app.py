@@ -142,9 +142,7 @@ st.sidebar.caption(f"*(Tổng định phí: {total_fixed_cost_month:,.0f} đ/th�
 max_acceptable_cost = st.sidebar.number_input("Mức tối đa chi phí chấp nhận:", min_value=0, value=3000000, step=100000)
 st.sidebar.caption(f"💵 Đang nhập: **{max_acceptable_cost:,.0f} VNĐ**")
 st.sidebar.markdown("---")
-st.sidebar.header("📏 3. Giới hạn Ghép chiều về")
-
-help="**Logic:** Chỉ ghép chiều về nếu chi phí phát sinh do đi vòng (Detour) nhỏ hơn chi phí chạy rỗng (Empty-leg) tiết kiệm được.")
+st.sidebar.header("📏 3. Giới hạn Ghép chiều về"), help="**Logic:** Chỉ ghép chiều về nếu chi phí phát sinh do đi vòng (Detour) nhỏ hơn chi phí chạy rỗng (Empty-leg) tiết kiệm được.")
 
 # --- HÀM LẤY KHOẢNG CÁCH THỰC TẾ TỪ BẢN ĐỒ ---
 def get_route_path_osrm(lat1, lon1, lat2, lon2):
