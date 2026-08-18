@@ -1,0 +1,9 @@
+NodeID,Name,Type,Demand,Lat,Lon
+0,Kho Trung Tam Dong A,Depot,0,10.8231,106.6297
+1,KCN Tan Binh,Delivery,15,10.8122,106.6201
+2,KCN Vinh Loc,Delivery,20,10.8354,106.5752
+3,KCN Le Minh Xuan,Delivery,15,10.7412,106.5284
+4,KCN Tan Tao,Delivery,25,10.7485,106.5821
+5,KCN Hiep Phuoc,Pickup,20,10.6452,106.7451
+6,KCN Cat Lai,Pickup,25,10.7681,106.7865
+7,KCN Song Than,Pickup,15,10.9015,106.7482
