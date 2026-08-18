@@ -465,7 +465,7 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
                 col1.metric("Tổng chi phí Tối ưu", f"{optimized_cost:,.0f} đ", f"-{savings:,.0f} đ", delta_color="inverse")
                 col2.metric("Số xe thực tế sử dụng", f"{vehicles_used} / {num_vehicles} xe", f"-{manual_vehicles - vehicles_used} chuyến")
                 col3.metric("Tổng quãng đường", f"{round(total_distance, 2)} km", f"-{round(manual_distance - total_distance, 1)} km")
-                col4.metric("Đơn lấy hàng (Backhaul)", f"{len(df[df['Type'] == 'Pickup'])} đơn ghép")
+                col4.metric("Đơn ghép (Backhaul Thực)", f"{total_actual_backhauls} đơn")
 
                 st.subheader("Bản đồ điều phối trực quan")
                 st_folium(m, width=1000, height=520, returned_objects=[])
