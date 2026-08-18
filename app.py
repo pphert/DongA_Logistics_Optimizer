@@ -66,7 +66,6 @@ if has_duplicate_vehicles:
 st.sidebar.markdown("---")
 st.sidebar.header("💰 2. Cấu hình Chi phí (VNĐ)")
 
-# --- ĐOẠN CODE MỚI: BÓC TÁCH CÔNG THỨC BIẾN PHÍ NHIÊN LIỆU ---
 with st.sidebar.expander("⛽ Chi tiết Biến phí nhiên liệu", expanded=True):
     fuel_consumption = st.number_input(
         "Định mức tiêu hao (Lít/100km):", 
@@ -110,19 +109,74 @@ st.sidebar.caption(f"*(Tổng định phí: {total_fixed_cost_month:,.0f} đ/th�
 
 max_acceptable_cost = st.sidebar.number_input("Mức tối đa chi phí chấp nhận:", min_value=0, value=3000000, step=100000)
 st.sidebar.caption(f"💵 Đang nhập: **{max_acceptable_cost:,.0f} VNĐ**")
+
 st.sidebar.markdown("---")
 st.sidebar.header("📏 3. Giới hạn Vận hành")
 
-# Gợi ý thông minh: Tính giới hạn km bằng ngân sách (Tổng ngân sách / tiền xăng)
-suggested_max_km = int(max_acceptable_cost / fuel_cost_per_km) if fuel_cost_per_km > 0 else 100
-st.sidebar.caption(f"💡 Dựa trên giới hạn ngân sách, xe không nên chạy vượt quá **{suggested_max_km} km**.")
+with st.sidebar.expander("⏱️ Cấu hình Thời gian & Vận tốc", expanded=True):
+    # 1. Tổng thời gian ca làm việc (Mặc định 10h, chặn trần max 10.0h)
+    shift_hours = st.number_input(
+        "Tổng thời gian ca làm việc (giờ/ngày):",
+        min_value=1.0,
+        max_value=10.0,
+        value=10.0,
+        step=0.5,
+        format="%.1f",
+        help="Quy định an toàn lao động tối đa không quá 10 giờ/ngày."
+    )
+    
+    # 2. Thời gian nghỉ bắt buộc: Hệ thống tự tính (15 phút = 0.25h sau mỗi 4h lái liên tục)
+    # Ví dụ: ca 10h có 2 lần nghỉ 15p = 30p (0.5h)
+    num_rest_breaks = int(shift_hours // 4)
+    rest_time = num_rest_breaks * 0.25
+    st.text_input(
+        "Thời gian nghỉ bắt buộc (giờ):",
+        value=f"{rest_time:.2f} giờ ({int(rest_time * 60)} phút)",
+        disabled=True,
+        help="Tự động tính: Nghỉ 15 phút sau mỗi 4 giờ làm việc liên tục theo luật."
+    )
+    
+    # 3. Tính số điểm dừng trung bình từ dữ liệu đơn hàng và tải trọng đội xe
+    num_customers = len(df[df['Type'] != 'Depot']) if 'df' in locals() and len(df) > 1 else 7
+    total_del_demand = df[df['Type'] == 'Delivery']['Demand'].sum() if 'df' in locals() and len(df) > 1 else 75
+    total_pic_demand = df[df['Type'] == 'Pickup']['Demand'].sum() if 'df' in locals() and len(df) > 1 else 60
+    max_demand = max(total_del_demand, total_pic_demand)
+    
+    # Tải trọng trung bình 1 xe (mặc định 30T nếu chưa khởi tạo)
+    avg_capacity = sum(vehicle_capacities) / len(vehicle_capacities) if len(vehicle_capacities) > 0 else 30
+    min_vehicles_needed = max(1, math.ceil(max_demand / avg_capacity)) if avg_capacity > 0 else 1
+    
+    avg_stops_per_vehicle = num_customers / min_vehicles_needed
+    time_per_stop = 2.0  # Cố định 2 giờ cho mỗi điểm dừng
+    total_service_time = avg_stops_per_vehicle * time_per_stop
+    
+    st.text_input(
+        "Thời gian dừng đỗ, bốc dỡ (giờ):",
+        value=f"{total_service_time:.2f} giờ ({avg_stops_per_vehicle:.1f} điểm × 2h)",
+        disabled=True,
+        help=f"Tổng {num_customers} điểm ÷ {min_vehicles_needed} xe xuất bến = {avg_stops_per_vehicle:.2f} điểm/xe × 2h/điểm."
+    )
+    
+    # 4. Vận tốc bình quân (Mặc định 50 km/h)
+    avg_speed = st.number_input(
+        "Vận tốc bình quân (km/h):",
+        min_value=10.0,
+        max_value=100.0,
+        value=50.0,
+        step=5.0,
+        format="%.1f",
+        help="Vận tốc trung bình pha trộn (mixed route) cho bài toán VRP tổng quát."
+    )
 
-max_distance_km = st.sidebar.number_input(
-    "Giới hạn TỐI ĐA mỗi xe (km):", 
-    min_value=10, 
-    value=80, 
-    step=5,
-    help="Nếu có điểm bốc hàng ở quá xa làm vượt số km này, AI sẽ không cho xe đó đi ghép nữa mà điều một xe rỗng khác từ bãi ra để phục vụ."
+# --- CÔNG THỨC TÍNH TOÁN QUÃNG ĐƯỜNG TỐI ĐA ---
+# Thời gian xe thực tế lăn bánh = Tổng ca - Dừng đỗ - Nghỉ bắt buộc
+driving_time = max(0.0, shift_hours - total_service_time - rest_time)
+max_distance_km = int(driving_time * avg_speed)
+
+# Hiển thị kết quả tự động tính
+st.sidebar.markdown(f"**Giới hạn Km TỐI ĐA mỗi xe:** `{max_distance_km} km`")
+st.sidebar.caption(
+    f"*({shift_hours}h ca − {total_service_time:.1f}h dỡ hàng − {rest_time:.2f}h nghỉ) × {avg_speed:.0f} km/h*"
 )
 
 # --- PHẦN 1: QUẢN LÝ DỮ LIỆU ĐƠN HÀNG ---
