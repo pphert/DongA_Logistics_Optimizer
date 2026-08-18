@@ -361,6 +361,10 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
                     route_del_load = 0
                     route_pic_load = 0
                     
+                    # 1. Khởi tạo chuỗi chi tiết lộ trình với tên điểm xuất phát
+                    start_node_index = manager.IndexToNode(index)
+                    route_details_str = str(df.iloc[start_node_index]['Name'])
+                    
                     while not routing.IsEnd(index):
                         node_index = manager.IndexToNode(index)
                         route_nodes.append(str(df.iloc[node_index]['Name']))
@@ -371,9 +375,15 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
                         previous_index = index
                         index = solution.Value(routing.NextVar(index))
                         
-                        # Tính khoảng cách thực tế từ ma trận km
-                        dist_step = distance_matrix[manager.IndexToNode(previous_index)][manager.IndexToNode(index)]
-                        route_distance += dist_step
+                        # Tính khoảng cách đoạn đường nhỏ (segment) thực tế
+                        dist_step_m = distance_matrix[manager.IndexToNode(previous_index)][manager.IndexToNode(index)]
+                        dist_step_km = dist_step_m / 1000.0
+                        route_distance += dist_step_m
+                        
+                        # 2. Nối số km chi tiết và tên điểm tiếp theo vào chuỗi lộ trình
+                        next_node_index = manager.IndexToNode(index)
+                        next_node_name = str(df.iloc[next_node_index]['Name'])
+                        route_details_str += f" ➔ [{dist_step_km:.1f} km] ➔ {next_node_name}"
                         
                         # --- VẼ BẢN ĐỒ THỰC TẾ (BÁM ĐƯỜNG) ---
                         lat1, lon1 = df.iloc[manager.IndexToNode(previous_index)]['Lat'], df.iloc[manager.IndexToNode(previous_index)]['Lon']
@@ -392,7 +402,7 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
                         total_distance += actual_distance
                         folium.PolyLine(
                             route_coords, color=colors[vehicle_id % len(colors)], weight=5, opacity=0.8,
-                            tooltip=f"Lộ trình {vehicle_names[vehicle_id]}"
+                            tooltip=f"Lộ trình {vehicle_names[vehicle_id]}: {actual_distance:.1f} km"
                         ).add_to(m)
                         
                         routes.append({
@@ -401,7 +411,7 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
                             "Giao đi": f"{route_del_load} T",
                             "Lấy về": f"{route_pic_load} T",
                             "Quãng đường": f"{round(actual_distance, 2)} km",
-                            "Lộ trình": " ➔ ".join(route_nodes)
+                            "Lộ trình": route_details_str # <--- Đẩy chuỗi lộ trình có chứa số km vào bảng
                         })
                 # --- TÍNH TOÁN TÀI CHÍNH SAU TỐI ƯU ---
                 vehicles_used = len(routes)
