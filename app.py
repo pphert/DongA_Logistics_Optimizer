@@ -147,8 +147,9 @@ with st.sidebar.expander("⏱️ Cấu hình Thời gian & Vận tốc", expande
     min_vehicles_needed = max(1, math.ceil(max_demand / avg_capacity)) if avg_capacity > 0 else 1
     
     # Làm tròn số điểm dừng (round) thành số nguyên
+   # Làm tròn số điểm dừng (round) thành số nguyên
     avg_stops_raw = num_customers / min_vehicles_needed
-    avg_stops_rounded = round(avg_stops_raw)  # Làm tròn thành số nguyên (ví dụ 2.33 -> 2 điểm)
+    avg_stops_rounded = math.ceil(avg_stops_raw)  # LUÔN LÀM TRÒN LÊN để lấy kịch bản khắt khe nhất
     
     time_per_stop = 2.0  # Cố định 2 giờ cho mỗi điểm dừng
     total_service_time = avg_stops_rounded * time_per_stop
