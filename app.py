@@ -293,10 +293,29 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
             dist_callback_index = routing.RegisterTransitCallback(distance_callback)
             routing.AddDimension(
                 dist_callback_index,
-                0,  # Không cho phép slack
-                9999999,  # GỠ BỎ GIỚI HẠN TỔNG (để số cực lớn cho xe chạy thoải mái miễn là có lãi)
+                0,  
+                9999999,  # Không giới hạn tổng quãng đường nữa
                 True, 
                 'Distance'
+            )
+            
+            # --- MỚI: RÀNG BUỘC THỜI GIAN CA LÀM VIỆC (Max 14 giờ) ---
+            def time_callback(from_index, to_index):
+                from_node = manager.IndexToNode(from_index)
+                to_node = manager.IndexToNode(to_index)
+                dist_km = distance_matrix[from_node][to_node] / 1000.0
+                driving_time = dist_km / 30.0  # Giả sử xe tải chạy 30km/h trong đô thị
+                # Phía giao nhận tốn 2 tiếng bốc dỡ tại mỗi KCN
+                service_time = 2.0 if df.iloc[to_node]['Type'] != 'Depot' else 0.0
+                return int((driving_time + service_time) * 100) # Nhân 100 để làm tròn thành số nguyên
+
+            time_callback_index = routing.RegisterTransitCallback(time_callback)
+            routing.AddDimension(
+                time_callback_index,
+                0, # Không cho phép lề mề
+                int(14 * 100), # TỐI ĐA 14 tiếng (Phù hợp 2 tài xế luân phiên)
+                True,
+                'Time'
             )
 
             # 2. RÀNG BUỘC TÀI CHÍNH & LOGIC NGHIỆP VỤ (AI đếm bằng tiền VNĐ)
@@ -343,6 +362,7 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
 
             if solution:
                 total_distance = 0
+                total_actual_backhauls = 0  # Biến mới để đếm đơn Backhaul "chuẩn"
                 routes = []
                 colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2']
 
@@ -363,10 +383,11 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
                     route_coords = []
                     route_nodes = []
                     route_distance = 0
+                    route_time_hours = 0.0  # Tổng thời gian
                     route_del_load = 0
                     route_pic_load = 0
+                    route_pickup_count = 0  # Đếm số điểm lấy hàng trên 1 xe
                     
-                    # 1. Khởi tạo chuỗi chi tiết lộ trình với tên điểm xuất phát
                     start_node_index = manager.IndexToNode(index)
                     route_details_str = str(df.iloc[start_node_index]['Name'])
                     
@@ -376,25 +397,29 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
                         
                         route_del_load += deliveries[node_index]
                         route_pic_load += pickups[node_index]
+                        if df.iloc[node_index]['Type'] == 'Pickup':
+                            route_pickup_count += 1
                         
                         previous_index = index
                         index = solution.Value(routing.NextVar(index))
                         
-                        # Tính khoảng cách đoạn đường nhỏ (segment) thực tế
+                        # Tính khoảng cách & Thời gian
                         dist_step_m = distance_matrix[manager.IndexToNode(previous_index)][manager.IndexToNode(index)]
                         dist_step_km = dist_step_m / 1000.0
                         route_distance += dist_step_m
                         
-                        # 2. Nối số km chi tiết và tên điểm tiếp theo vào chuỗi lộ trình
-                        next_node_index = manager.IndexToNode(index)
-                        next_node_name = str(df.iloc[next_node_index]['Name'])
+                        driving_time = dist_step_km / 30.0  # Vận tốc 30 km/h
+                        to_node_type = df.iloc[manager.IndexToNode(index)]['Type']
+                        service_time = 2.0 if to_node_type != 'Depot' else 0.0
+                        route_time_hours += driving_time + service_time
+                        
+                        next_node_name = str(df.iloc[manager.IndexToNode(index)]['Name'])
                         route_details_str += f" ➔ [{dist_step_km:.1f} km] ➔ {next_node_name}"
                         
-                        # --- VẼ BẢN ĐỒ THỰC TẾ (BÁM ĐƯỜNG) ---
+                        # Vẽ bản đồ
                         lat1, lon1 = df.iloc[manager.IndexToNode(previous_index)]['Lat'], df.iloc[manager.IndexToNode(previous_index)]['Lon']
                         lat2, lon2 = df.iloc[manager.IndexToNode(index)]['Lat'], df.iloc[manager.IndexToNode(index)]['Lon']
                         
-                        # Lấy hàng chục tọa độ nhỏ của đoạn đường này và nối vào danh sách tổng
                         segment_path = get_route_path_osrm(lat1, lon1, lat2, lon2)
                         route_coords.extend(segment_path)
 
@@ -405,9 +430,14 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
 
                     if len(route_nodes) > 2:
                         total_distance += actual_distance
+                        
+                        # LOGIC CHUẨN KẾ TOÁN: Chỉ tính Backhaul nếu xe có Giao đi và Lấy về
+                        if route_del_load > 0 and route_pic_load > 0:
+                            total_actual_backhauls += route_pickup_count
+                            
                         folium.PolyLine(
                             route_coords, color=colors[vehicle_id % len(colors)], weight=5, opacity=0.8,
-                            tooltip=f"Lộ trình {vehicle_names[vehicle_id]}: {actual_distance:.1f} km"
+                            tooltip=f"Lộ trình {vehicle_names[vehicle_id]}: {actual_distance:.1f} km | {route_time_hours:.1f} giờ"
                         ).add_to(m)
                         
                         routes.append({
@@ -416,8 +446,11 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
                             "Giao đi": f"{route_del_load} T",
                             "Lấy về": f"{route_pic_load} T",
                             "Quãng đường": f"{round(actual_distance, 2)} km",
-                            "Lộ trình": route_details_str # <--- Đẩy chuỗi lộ trình có chứa số km vào bảng
+                            "Thời gian": f"{route_time_hours:.1f} giờ",  # CỘT MỚI
+                            "Lộ trình": route_details_str
                         })
+
+                
                 # --- TÍNH TOÁN TÀI CHÍNH SAU TỐI ƯU ---
                 vehicles_used = len(routes)
                 optimized_cost = (vehicles_used * fixed_vehicle_cost) + (total_distance * fuel_cost_per_km)
