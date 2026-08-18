@@ -173,21 +173,18 @@ with st.sidebar.expander("⚖️ Phân tích Hòa vốn (Break-even)", expanded=
     )
     
 # --- TÍNH TOÁN KẾT QUẢ ĐẦU RA ---
-# 1. Khoảng cách đi vòng tối đa cho phép (Detour Limit)
-max_detour_km = avg_empty_km * (safety_margin / 100.0)
+# 1. Tính khoảng cách kết nối tối đa (Từ điểm Delivery cuối sang điểm Pickup đầu)
+max_del_to_pic_km = avg_empty_km * (safety_margin / 100.0)
 
-# 2. Tổng giới hạn quãng đường (max_distance_km) để truyền vào AI Solver
-# Bằng = Chuyến khứ hồi trực tiếp (x2) + Quãng đường đi vòng thêm
+# 2. Tổng giới hạn quãng đường (Chạy ngầm để truyền vào Google OR-Tools Solver)
 base_round_trip = avg_empty_km * 2
-max_distance_km = int(base_round_trip + max_detour_km)
+max_distance_km = int(base_round_trip + max_del_to_pic_km)
 
-# Hiển thị trên giao diện
-st.sidebar.markdown(f"**Khoảng cách đi vòng TỐI ĐA:** `{max_detour_km:.1f} km`")
-st.sidebar.markdown(f"**Giới hạn Km TỔNG mỗi xe:** `{max_distance_km} km`")
+# Hiển thị trực quan trên giao diện
+st.sidebar.markdown(f"**Khoảng cách TỐI ĐA từ điểm Giao $\\rightarrow$ Lấy:** `{max_del_to_pic_km:.1f} km`")
 st.sidebar.caption(
-    f"*(Chuyến khứ hồi {base_round_trip}km + Đi vòng thêm {max_detour_km:.1f}km)*"
+    f"*(Luật ghép chuyến: Xe chỉ chạy sang điểm Pickup nếu khoảng cách $\le$ {max_del_to_pic_km:.1f} km)*"
 )
-
 # --- PHẦN 1: QUẢN LÝ DỮ LIỆU ĐƠN HÀNG ---
 st.subheader("1. Dữ liệu Đơn hàng & Tọa độ")
 
