@@ -69,8 +69,56 @@ st.sidebar.header("💰 2. Cấu hình Chi phí (VNĐ)")
 fuel_cost_per_km = st.sidebar.number_input("Biến phí nhiên liệu (VNĐ/km):", min_value=0, value=5000, step=500)
 st.sidebar.caption(f"💵 Đang nhập: **{fuel_cost_per_km:,.0f} VNĐ**")
 
-fixed_vehicle_cost = st.sidebar.number_input("Định phí xuất xe (VNĐ/chuyến):", min_value=0, value=500000, step=50000)
-st.sidebar.caption(f"💵 Đang nhập: **{fixed_vehicle_cost:,.0f} VNĐ**")
+with st.sidebar.expander("📋 Chi tiết Định phí xuất xe (VNĐ/chuyến)", expanded=False):
+    st.caption("Nhập các thành phần chi phí phân bổ cho mỗi chuyến:")
+    
+    cost_depreciation = st.number_input(
+        "1. Khấu hao xe (phân bổ):", 
+        min_value=0, value=150000, step=10000,
+        help="Khấu hao đầu kéo + rơ-moóc phân bổ cho 1 chuyến"
+    )
+    
+    cost_driver_salary = st.number_input(
+        "2. Lương cố định tài/phụ xe:", 
+        min_value=0, value=150000, step=10000,
+        help="Phần lương cứng cơ bản chia trên số chuyến định mức"
+    )
+    
+    cost_parking_terminal = st.number_input(
+        "3. Phí bến bãi, xuất/nhập bến:", 
+        min_value=0, value=50000, step=5000,
+        help="Tiền thuê bãi đậu xe + lệ phí ra vào bến/cảng"
+    )
+    
+    cost_toll = st.number_input(
+        "4. Phí cầu đường (BOT cố định):", 
+        min_value=0, value=50000, step=5000,
+        help="Phí qua trạm thu phí cố định cho chặng đường"
+    )
+    
+    cost_insurance_inspection = st.number_input(
+        "5. Bảo hiểm, đăng kiểm phân bổ:", 
+        min_value=0, value=50000, step=5000,
+        help="Phí bảo hiểm TNDS/vật chất + phí kiểm định phân bổ"
+    )
+    
+    cost_management_dispatch = st.number_input(
+        "6. Quản lý, điều vận phân bổ:", 
+        min_value=0, value=50000, step=5000,
+        help="Chi phí văn phòng, phần mềm và nhân viên điều độ"
+    )
+
+# Tự động tính tổng định phí xuất xe từ 6 khoản trên
+fixed_vehicle_cost = (
+    cost_depreciation 
+    + cost_driver_salary 
+    + cost_parking_terminal 
+    + cost_toll 
+    + cost_insurance_inspection 
+    + cost_management_dispatch
+)
+
+st.sidebar.markdown(f"**➔ Tổng định phí xuất xe:** `{fixed_vehicle_cost:,.0f} VNĐ/chuyến`")
 
 max_acceptable_cost = st.sidebar.number_input("Mức tối đa chi phí chấp nhận:", min_value=0, value=3000000, step=100000)
 st.sidebar.caption(f"💵 Đang nhập: **{max_acceptable_cost:,.0f} VNĐ**")
