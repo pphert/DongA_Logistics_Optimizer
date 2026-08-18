@@ -144,7 +144,7 @@ st.sidebar.caption(f"💵 Đang nhập: **{max_acceptable_cost:,.0f} VNĐ**")
 st.sidebar.markdown("---")
 st.sidebar.header("📏 3. Giới hạn Ghép chiều về")
 
-st.sidebar.info("💡 **Logic:** Chỉ ghép chiều về nếu chi phí phát sinh do đi vòng (Detour) nhỏ hơn chi phí chạy rỗng (Empty-leg) tiết kiệm được.")
+help="**Logic:** Chỉ ghép chiều về nếu chi phí phát sinh do đi vòng (Detour) nhỏ hơn chi phí chạy rỗng (Empty-leg) tiết kiệm được.")
 
 # --- HÀM LẤY KHOẢNG CÁCH THỰC TẾ TỪ BẢN ĐỒ ---
 def get_route_path_osrm(lat1, lon1, lat2, lon2):
@@ -166,9 +166,8 @@ def get_route_path_osrm(lat1, lon1, lat2, lon2):
     return [[lat1, lon1], [lat2, lon2]]
 
 
-with st.sidebar.expander("⚖️ Phân tích Hòa vốn (Động - Dynamic)", expanded=True):
-    st.info("💡 **Cơ chế mới:** Hệ thống quét riêng rẽ từng điểm Giao hàng, đo khoảng cách thực tế từ điểm đó về Kho để cấp 'Ngân sách km' cho phép đi vòng.")
-    
+with st.sidebar.expander("⚖️ Phân tích Hòa vốn", expanded=True):
+        
     # Tỷ lệ an toàn lợi nhuận
     safety_margin = st.slider(
         "Ngưỡng cho phép đi vòng (% khoảng cách rỗng):",
