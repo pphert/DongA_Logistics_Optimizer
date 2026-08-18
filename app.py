@@ -66,8 +66,28 @@ if has_duplicate_vehicles:
 st.sidebar.markdown("---")
 st.sidebar.header("💰 2. Cấu hình Chi phí (VNĐ)")
 
-fuel_cost_per_km = st.sidebar.number_input("Biến phí nhiên liệu (VNĐ/km):", min_value=0, value=5000, step=500)
-st.sidebar.caption(f"💵 Đang nhập: **{fuel_cost_per_km:,.0f} VNĐ**")
+# --- ĐOẠN CODE MỚI: BÓC TÁCH CÔNG THỨC BIẾN PHÍ NHIÊN LIỆU ---
+with st.sidebar.expander("⛽ Chi tiết Biến phí nhiên liệu", expanded=True):
+    fuel_consumption = st.number_input(
+        "Định mức tiêu hao (Lít/100km):", 
+        min_value=1.0, 
+        value=30.0, 
+        step=1.0, 
+        format="%.1f"
+    )
+    fuel_price = st.number_input(
+        "Đơn giá nhiên liệu (VNĐ/Lít):", 
+        min_value=1000, 
+        value=20000, 
+        step=500
+    )
+    st.caption(f"💵 Giá dầu: **{fuel_price:,.0f} VNĐ/Lít**")
+
+# Tự động tính Biến phí nhiên liệu trên 1 km theo công thức
+fuel_cost_per_km = (fuel_consumption / 100.0) * fuel_price
+
+st.sidebar.markdown(f"**Biến phí nhiên liệu:** `{fuel_cost_per_km:,.0f} VNĐ/km`")
+st.sidebar.caption(f"*({fuel_consumption} Lít ÷ 100) × {fuel_price:,.0f} đ*")
 
 with st.sidebar.expander("🛠️ Chi tiết cấu thành Định phí (Tháng)", expanded=False):
     cost_depreciation = st.number_input("Khấu hao xe (VNĐ/tháng):", min_value=0, value=12000000, step=1000000)
