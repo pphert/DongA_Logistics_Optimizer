@@ -286,15 +286,15 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
             manager = pywrapcp.RoutingIndexManager(len(distance_matrix), num_vehicles, 0)
             routing = pywrapcp.RoutingModel(manager)
 
-            # 1. RÀNG BUỘC KHOẢNG CÁCH (Tạo giới hạn Km)
+            # 1. RÀNG BUỘC KHOẢNG CÁCH (Nới lỏng giới hạn tổng)
             def distance_callback(from_index, to_index):
                 return distance_matrix[manager.IndexToNode(from_index)][manager.IndexToNode(to_index)]
             
             dist_callback_index = routing.RegisterTransitCallback(distance_callback)
             routing.AddDimension(
                 dist_callback_index,
-                0,  # Không cho phép slack (thời gian trễ)
-                int(max_distance_km * 1000),  # Giới hạn km quy ra mét
+                0,  # Không cho phép slack
+                9999999,  # GỠ BỎ GIỚI HẠN TỔNG (để số cực lớn cho xe chạy thoải mái miễn là có lãi)
                 True, 
                 'Distance'
             )
@@ -303,13 +303,18 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
             def cost_callback(from_index, to_index):
                 from_node = manager.IndexToNode(from_index)
                 to_node = manager.IndexToNode(to_index)
+                dist_m = distance_matrix[from_node][to_node]
                 
-                # Cấm đi từ Pickup sang Delivery (Phạt 999 triệu VNĐ để AI né đường này)
+                # 2.1. Cấm đi từ Pickup sang Delivery (Phạt 999 triệu VNĐ)
                 if df.iloc[from_node]['Type'] == 'Pickup' and df.iloc[to_node]['Type'] == 'Delivery':
                     return 999999999
                 
-                # Tính chi phí đoạn đường bằng VNĐ
-                dist_m = distance_matrix[from_node][to_node]
+                # 2.2. LUẬT MỚI: Khóa chặt khoảng cách Giao ➔ Lấy
+                if df.iloc[from_node]['Type'] == 'Delivery' and df.iloc[to_node]['Type'] == 'Pickup':
+                    if dist_m > (max_del_to_pic_km * 1000):
+                        return 999999999  # Nếu vượt ngưỡng đi vòng cho phép, cấm ghép!
+                
+                # Tính chi phí đoạn đường bình thường bằng VNĐ
                 cost_vnd = int((dist_m / 1000.0) * fuel_cost_per_km)
                 return cost_vnd
 
