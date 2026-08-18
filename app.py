@@ -136,25 +136,36 @@ with st.sidebar.expander("⏱️ Cấu hình Thời gian & Vận tốc", expande
         help="Tự động tính: Nghỉ 15 phút sau mỗi 4 giờ làm việc liên tục theo luật."
     )
     
-    # 3. Tính số điểm dừng trung bình từ dữ liệu đơn hàng và tải trọng đội xe
+   # 3. Tính số điểm dừng trung bình từ dữ liệu đơn hàng và tải trọng đội xe
     num_customers = len(df[df['Type'] != 'Depot']) if 'df' in locals() and len(df) > 1 else 7
     total_del_demand = df[df['Type'] == 'Delivery']['Demand'].sum() if 'df' in locals() and len(df) > 1 else 75
     total_pic_demand = df[df['Type'] == 'Pickup']['Demand'].sum() if 'df' in locals() and len(df) > 1 else 60
     max_demand = max(total_del_demand, total_pic_demand)
     
-    # Tải trọng trung bình 1 xe (mặc định 30T nếu chưa khởi tạo)
+    # Tải trọng trung bình 1 xe
     avg_capacity = sum(vehicle_capacities) / len(vehicle_capacities) if len(vehicle_capacities) > 0 else 30
     min_vehicles_needed = max(1, math.ceil(max_demand / avg_capacity)) if avg_capacity > 0 else 1
     
-    avg_stops_per_vehicle = num_customers / min_vehicles_needed
+    # Làm tròn số điểm dừng (round) thành số nguyên
+    avg_stops_raw = num_customers / min_vehicles_needed
+    avg_stops_rounded = round(avg_stops_raw)  # Làm tròn thành số nguyên (ví dụ 2.33 -> 2 điểm)
+    
     time_per_stop = 2.0  # Cố định 2 giờ cho mỗi điểm dừng
-    total_service_time = avg_stops_per_vehicle * time_per_stop
+    total_service_time = avg_stops_rounded * time_per_stop
+    
+    # Thêm dòng hiển thị số điểm dừng dự tính (làm tròn)
+    st.text_input(
+        "Số điểm dừng dự tính / xe:",
+        value=f"{avg_stops_rounded} điểm/xe",
+        disabled=True,
+        help=f"Hệ thống tự tính: {num_customers} điểm ÷ {min_vehicles_needed} xe = {avg_stops_raw:.2f} điểm (đã làm tròn thành {avg_stops_rounded} điểm)."
+    )
     
     st.text_input(
         "Thời gian dừng đỗ, bốc dỡ (giờ):",
-        value=f"{total_service_time:.2f} giờ ({avg_stops_per_vehicle:.1f} điểm × 2h)",
+        value=f"{total_service_time:.1f} giờ ({avg_stops_rounded} điểm × 2h)",
         disabled=True,
-        help=f"Tổng {num_customers} điểm ÷ {min_vehicles_needed} xe xuất bến = {avg_stops_per_vehicle:.2f} điểm/xe × 2h/điểm."
+        help=f"Đã tính: {avg_stops_rounded} điểm × 2 giờ/điểm = {total_service_time:.1f} giờ."
     )
     
     # 4. Vận tốc bình quân (Mặc định 50 km/h)
