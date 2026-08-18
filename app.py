@@ -330,14 +330,6 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
                     route_del_load = 0
                     route_pic_load = 0
                     
-                   for vehicle_id in range(num_vehicles):
-                    index = routing.Start(vehicle_id)
-                    route_coords = []
-                    route_nodes = []
-                    route_distance = 0
-                    route_del_load = 0
-                    route_pic_load = 0
-                    
                     while not routing.IsEnd(index):
                         node_index = manager.IndexToNode(index)
                         route_nodes.append(str(df.iloc[node_index]['Name']))
@@ -362,7 +354,6 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
 
                     node_index = manager.IndexToNode(index)
                     route_nodes.append(str(df.iloc[node_index]['Name']))
-                       
                     
                     actual_distance = route_distance / 1000.0
 
@@ -381,7 +372,6 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
                             "Quãng đường": f"{round(actual_distance, 2)} km",
                             "Lộ trình": " ➔ ".join(route_nodes)
                         })
-
                 # --- TÍNH TOÁN TÀI CHÍNH SAU TỐI ƯU ---
                 vehicles_used = len(routes)
                 optimized_cost = (vehicles_used * fixed_vehicle_cost) + (total_distance * fuel_cost_per_km)
