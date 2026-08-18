@@ -116,25 +116,23 @@ st.sidebar.header("📏 3. Giới hạn Ghép chiều về")
 st.sidebar.info("💡 **Logic:** Chỉ ghép chiều về nếu chi phí phát sinh do đi vòng (Detour) nhỏ hơn chi phí chạy rỗng (Empty-leg) tiết kiệm được.")
 
 # --- HÀM LẤY KHOẢNG CÁCH THỰC TẾ TỪ BẢN ĐỒ ---
-def get_driving_distance(lat1, lon1, lat2, lon2):
-    """Gọi OSRM API lấy khoảng cách đường bộ thực tế (km). Nếu lỗi sẽ tự dùng đường chim bay."""
+def get_route_path_osrm(lat1, lon1, lat2, lon2):
+    """Gọi OSRM API để lấy chuỗi tọa độ chi tiết bám theo đường bộ"""
     try:
-        url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=false"
+        # Tham số overview=full & geometries=geojson yêu cầu trả về hình dáng đường bộ
+        url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=full&geometries=geojson"
         response = requests.get(url, timeout=3)
         if response.status_code == 200:
             data = response.json()
             if data["code"] == "Ok":
-                return data["routes"][0]["distance"] / 1000.0  # API trả về mét, đổi ra km
+                coords = data["routes"][0]["geometry"]["coordinates"]
+                # OSRM trả về [kinh độ, vĩ độ], Folium cần [vĩ độ, kinh độ] -> phải đảo ngược lại
+                return [[lat, lon] for lon, lat in coords]
     except Exception:
-        pass # Bỏ qua lỗi để chạy phương án dự phòng bên dưới
+        pass 
     
-    # Phương án dự phòng (Fallback): Đường chim bay * Hệ số Detour 1.3
-    R = 6371.0
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-    return (R * c) * 1.3
+    # Phương án dự phòng: Nối thẳng 2 điểm nếu rớt mạng
+    return [[lat1, lon1], [lat2, lon2]]
 
 
 with st.sidebar.expander("⚖️ Phân tích Hòa vốn (Break-even)", expanded=True):
@@ -332,10 +330,17 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
                     route_del_load = 0
                     route_pic_load = 0
                     
+                   for vehicle_id in range(num_vehicles):
+                    index = routing.Start(vehicle_id)
+                    route_coords = []
+                    route_nodes = []
+                    route_distance = 0
+                    route_del_load = 0
+                    route_pic_load = 0
+                    
                     while not routing.IsEnd(index):
                         node_index = manager.IndexToNode(index)
                         route_nodes.append(str(df.iloc[node_index]['Name']))
-                        route_coords.append([df.iloc[node_index]['Lat'], df.iloc[node_index]['Lon']])
                         
                         route_del_load += deliveries[node_index]
                         route_pic_load += pickups[node_index]
@@ -346,10 +351,18 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
                         # Tính khoảng cách thực tế từ ma trận km
                         dist_step = distance_matrix[manager.IndexToNode(previous_index)][manager.IndexToNode(index)]
                         route_distance += dist_step
+                        
+                        # --- VẼ BẢN ĐỒ THỰC TẾ (BÁM ĐƯỜNG) ---
+                        lat1, lon1 = df.iloc[manager.IndexToNode(previous_index)]['Lat'], df.iloc[manager.IndexToNode(previous_index)]['Lon']
+                        lat2, lon2 = df.iloc[manager.IndexToNode(index)]['Lat'], df.iloc[manager.IndexToNode(index)]['Lon']
+                        
+                        # Lấy hàng chục tọa độ nhỏ của đoạn đường này và nối vào danh sách tổng
+                        segment_path = get_route_path_osrm(lat1, lon1, lat2, lon2)
+                        route_coords.extend(segment_path)
 
                     node_index = manager.IndexToNode(index)
                     route_nodes.append(str(df.iloc[node_index]['Name']))
-                    route_coords.append([df.iloc[node_index]['Lat'], df.iloc[node_index]['Lon']])
+                       
                     
                     actual_distance = route_distance / 1000.0
 
