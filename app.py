@@ -109,86 +109,83 @@ st.sidebar.caption(f"*(Tổng định phí: {total_fixed_cost_month:,.0f} đ/th�
 
 max_acceptable_cost = st.sidebar.number_input("Mức tối đa chi phí chấp nhận:", min_value=0, value=3000000, step=100000)
 st.sidebar.caption(f"💵 Đang nhập: **{max_acceptable_cost:,.0f} VNĐ**")
-
 st.sidebar.markdown("---")
-st.sidebar.header("📏 3. Giới hạn Vận hành")
+st.sidebar.header("📏 3. Giới hạn Ghép chiều về")
 
-with st.sidebar.expander("⏱️ Cấu hình Thời gian & Vận tốc", expanded=True):
-    # 1. Tổng thời gian ca làm việc (Mặc định 10h, chặn trần max 10.0h)
-    shift_hours = st.number_input(
-        "Tổng thời gian ca làm việc (giờ/ngày):",
-        min_value=1.0,
-        max_value=10.0,
-        value=10.0,
-        step=0.5,
-        format="%.1f",
-        help="Quy định an toàn lao động tối đa không quá 10 giờ/ngày."
-    )
-    
-    # 2. Thời gian nghỉ bắt buộc: Hệ thống tự tính (15 phút = 0.25h sau mỗi 4h lái liên tục)
-    # Ví dụ: ca 10h có 2 lần nghỉ 15p = 30p (0.5h)
-    num_rest_breaks = int(shift_hours // 4)
-    rest_time = num_rest_breaks * 0.25
-    st.text_input(
-        "Thời gian nghỉ bắt buộc (giờ):",
-        value=f"{rest_time:.2f} giờ ({int(rest_time * 60)} phút)",
-        disabled=True,
-        help="Tự động tính: Nghỉ 15 phút sau mỗi 4 giờ làm việc liên tục theo luật."
-    )
-    
-   # 3. Tính số điểm dừng trung bình từ dữ liệu đơn hàng và tải trọng đội xe
-    num_customers = len(df[df['Type'] != 'Depot']) if 'df' in locals() and len(df) > 1 else 7
-    total_del_demand = df[df['Type'] == 'Delivery']['Demand'].sum() if 'df' in locals() and len(df) > 1 else 75
-    total_pic_demand = df[df['Type'] == 'Pickup']['Demand'].sum() if 'df' in locals() and len(df) > 1 else 60
-    max_demand = max(total_del_demand, total_pic_demand)
-    
-    # Tải trọng trung bình 1 xe
-    avg_capacity = sum(vehicle_capacities) / len(vehicle_capacities) if len(vehicle_capacities) > 0 else 30
-    min_vehicles_needed = max(1, math.ceil(max_demand / avg_capacity)) if avg_capacity > 0 else 1
-    
-    # Làm tròn số điểm dừng (round) thành số nguyên
-   # Làm tròn số điểm dừng (round) thành số nguyên
-    avg_stops_raw = num_customers / min_vehicles_needed
-    avg_stops_rounded = math.ceil(avg_stops_raw)  # LUÔN LÀM TRÒN LÊN để lấy kịch bản khắt khe nhất
-    
-    time_per_stop = 2.0  # Cố định 2 giờ cho mỗi điểm dừng
-    total_service_time = avg_stops_rounded * time_per_stop
-    
-    # Thêm dòng hiển thị số điểm dừng dự tính (làm tròn)
-    st.text_input(
-        "Số điểm dừng dự tính / xe:",
-        value=f"{avg_stops_rounded} điểm/xe",
-        disabled=True,
-        help=f"Hệ thống tự tính: {num_customers} điểm ÷ {min_vehicles_needed} xe = {avg_stops_raw:.2f} điểm (đã làm tròn thành {avg_stops_rounded} điểm)."
-    )
-    
-    st.text_input(
-        "Thời gian dừng đỗ, bốc dỡ (giờ):",
-        value=f"{total_service_time:.1f} giờ ({avg_stops_rounded} điểm × 2h)",
-        disabled=True,
-        help=f"Đã tính: {avg_stops_rounded} điểm × 2 giờ/điểm = {total_service_time:.1f} giờ."
-    )
-    
-    # 4. Vận tốc bình quân (Mặc định 50 km/h)
-    avg_speed = st.number_input(
-        "Vận tốc bình quân (km/h):",
-        min_value=10.0,
-        max_value=100.0,
-        value=50.0,
-        step=5.0,
-        format="%.1f",
-        help="Vận tốc trung bình pha trộn (mixed route) cho bài toán VRP tổng quát."
-    )
+st.sidebar.info("💡 **Logic:** Chỉ ghép chiều về nếu chi phí phát sinh do đi vòng (Detour) nhỏ hơn chi phí chạy rỗng (Empty-leg) tiết kiệm được.")
 
-# --- CÔNG THỨC TÍNH TOÁN QUÃNG ĐƯỜNG TỐI ĐA ---
-# Thời gian xe thực tế lăn bánh = Tổng ca - Dừng đỗ - Nghỉ bắt buộc
-driving_time = max(0.0, shift_hours - total_service_time - rest_time)
-max_distance_km = int(driving_time * avg_speed)
+with st.sidebar.expander("⚖️ Phân tích Hòa vốn (Break-even)", expanded=True):
+    # 1. Tự động tính Quãng đường rỗng trung bình (Depot -> Delivery)
+    avg_empty_km = 40.0  # Mặc định dự phòng an toàn
+    
+    if 'df' in locals() and not df.empty:
+        # Nhận diện tên cột (Type hoặc Loại điểm)
+        col_type = 'Type' if 'Type' in df.columns else 'Loại điểm'
+        col_lat = 'Vĩ độ' if 'Vĩ độ' in df.columns else 'Lat'
+        col_lon = 'Kinh độ' if 'Kinh độ' in df.columns else 'Lng'
+        
+        depots = df[df[col_type] == 'Depot']
+        deliveries = df[df[col_type] == 'Delivery']
+        
+        if not depots.empty and not deliveries.empty:
+            depot_row = depots.iloc[0]
+            total_dist = 0
+            
+            for _, row in deliveries.iterrows():
+                lat1, lon1 = depot_row[col_lat], depot_row[col_lon]
+                lat2, lon2 = row[col_lat], row[col_lon]
+                
+                # Công thức Haversine tính khoảng cách GPS (Đường chim bay)
+                R = 6371.0 # Bán kính trái đất (km)
+                dlat = math.radians(lat2 - lat1)
+                dlon = math.radians(lon2 - lon1)
+                a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+                c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+                dist_km = R * c
+                
+                # Nhân thêm hệ số ngoằn ngoèo thực tế (Detour Index = 1.3)
+                total_dist += (dist_km * 1.3)
+                
+            # Chia trung bình
+            avg_empty_km = total_dist / len(deliveries)
+            
+    st.text_input(
+        "Quãng đường rỗng trung bình (km):",
+        value=f"{avg_empty_km:.1f} km",
+        disabled=True,
+        help="Hệ thống tự động tính: Khoảng cách từ Depot đến các điểm Delivery, đã nhân hệ số đường bộ (1.3) để sát thực tế."
+    )
+    
+    # 2. Chi phí chạy rỗng tránh được (Hệ thống tự tính)
+    saved_cost = avg_empty_km * fuel_cost_per_km
+    st.text_input(
+        "Chi phí rỗng tránh được (VNĐ):",
+        value=f"{saved_cost:,.0f} đ",
+        disabled=True,
+        help=f"Điểm hòa vốn = {avg_empty_km:.1f} km × {fuel_cost_per_km:,.0f} đ/km. Đây là ngân sách tối đa cho phép để đi vòng."
+    )
+    
+    # 3. Tỷ lệ an toàn lợi nhuận (Người dùng nhập)
+    safety_margin = st.slider(
+        "Ngưỡng cho phép đi vòng (%):",
+        min_value=50, max_value=100, value=80, step=5,
+        help="Để có lợi nhuận, khoảng cách đi vòng phải thấp hơn điểm hòa vốn (Khuyên dùng 70-80%)."
+    )
+    
+# --- TÍNH TOÁN KẾT QUẢ ĐẦU RA ---
+# 1. Khoảng cách đi vòng tối đa cho phép (Detour Limit)
+max_detour_km = avg_empty_km * (safety_margin / 100.0)
 
-# Hiển thị kết quả tự động tính
-st.sidebar.markdown(f"**Giới hạn Km TỐI ĐA mỗi xe:** `{max_distance_km} km`")
+# 2. Tổng giới hạn quãng đường (max_distance_km) để truyền vào AI Solver
+# Bằng = Chuyến khứ hồi trực tiếp (x2) + Quãng đường đi vòng thêm
+base_round_trip = avg_empty_km * 2
+max_distance_km = int(base_round_trip + max_detour_km)
+
+# Hiển thị trên giao diện
+st.sidebar.markdown(f"**Khoảng cách đi vòng TỐI ĐA:** `{max_detour_km:.1f} km`")
+st.sidebar.markdown(f"**Giới hạn Km TỔNG mỗi xe:** `{max_distance_km} km`")
 st.sidebar.caption(
-    f"*({shift_hours}h ca − {total_service_time:.1f}h dỡ hàng − {rest_time:.2f}h nghỉ) × {avg_speed:.0f} km/h*"
+    f"*(Chuyến khứ hồi {base_round_trip}km + Đi vòng thêm {max_detour_km:.1f}km)*"
 )
 
 # --- PHẦN 1: QUẢN LÝ DỮ LIỆU ĐƠN HÀNG ---
