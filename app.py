@@ -11,7 +11,7 @@ st.set_page_config(page_title="Dong A Logistics Optimizer", layout="wide")
 st.title("🚛 Hệ thống Tối ưu Tuyến đường & Kiểm soát Chi phí")
 st.caption("Công nghệ: Google OR-Tools AI | Tối ưu bằng Tiền thật (VNĐ) & Giới hạn Quãng đường")
 
-# --- HÀM TÍNH KHOẢNG CÁCH ---
+# --- HÀM TÍNH KHOẢNG CÁCH VÀ MA TRẬN OSRM ---
 def haversine_distance(lat1, lon1, lat2, lon2):
     R = 6371.0
     dlat = math.radians(lat2 - lat1)
@@ -20,9 +20,41 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
+def get_driving_distance(lat1, lon1, lat2, lon2):
+    """Hàm lấy khoảng cách thực tế 1 cặp điểm cho phần Phân tích hòa vốn"""
+    try:
+        url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=false"
+        res = requests.get(url, timeout=3)
+        if res.status_code == 200 and res.json()["code"] == "Ok":
+            return res.json()["routes"][0]["distance"] / 1000.0
+    except:
+        pass
+    return haversine_distance(lat1, lon1, lat2, lon2) * 1.3
+
 def create_distance_matrix(df):
+    """Tạo ma trận khoảng cách ĐƯỜNG BỘ THỰC TẾ cho bộ giải AI"""
     num_nodes = len(df)
     matrix = []
+    
+    # Ưu tiên 1: Dùng OSRM Table API (Lấy toàn bộ ma trận siêu tốc)
+    try:
+        # Gom tất cả tọa độ thành chuỗi: lon1,lat1;lon2,lat2;...
+        coords_str = ";".join([f"{row['Lon']},{row['Lat']}" for _, row in df.iterrows()])
+        url = f"http://router.project-osrm.org/table/v1/driving/{coords_str}?annotations=distance"
+        response = requests.get(url, timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data["code"] == "Ok":
+                distances = data["distances"]
+                for i in range(num_nodes):
+                    row = [int(distances[i][j]) for j in range(num_nodes)] # OSRM trả về mét
+                    matrix.append(row)
+                return matrix
+    except Exception as e:
+        pass # Rớt mạng thì tự động chuyển qua dự phòng
+        
+    # Ưu tiên 2 (Dự phòng): Đường chim bay nhân hệ số ngoằn ngoèo 1.3
     for i in range(num_nodes):
         row = []
         for j in range(num_nodes):
@@ -30,10 +62,9 @@ def create_distance_matrix(df):
                 row.append(0)
             else:
                 dist = haversine_distance(df.iloc[i]['Lat'], df.iloc[i]['Lon'], df.iloc[j]['Lat'], df.iloc[j]['Lon'])
-                row.append(int(dist * 1000)) # Lưu khoảng cách thuần bằng mét
+                row.append(int(dist * 1.3 * 1000))
         matrix.append(row)
     return matrix
-
 # --- BẢNG ĐIỀU KHIỂN BÊN TRÁI ---
 st.sidebar.header("⚙️ 1. Cấu hình Đội xe")
 
