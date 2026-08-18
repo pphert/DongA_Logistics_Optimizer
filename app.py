@@ -8,7 +8,7 @@ import math
 st.set_page_config(page_title="Dong A Logistics Optimizer", layout="wide")
 
 st.title("🚛 Hệ thống Tối ưu Tuyến đường & Kiểm soát Chi phí")
-st.caption("Công nghệ: Google OR-Tools AI | Hỗ trợ tính toán hiệu quả Tài chính - Kế toán cho đội xe")
+st.caption("Công nghệ: Google OR-Tools AI | Tối ưu bằng Tiền thật (VNĐ) & Giới hạn Quãng đường")
 
 # --- HÀM TÍNH KHOẢNG CÁCH ---
 def haversine_distance(lat1, lon1, lat2, lon2):
@@ -29,13 +29,7 @@ def create_distance_matrix(df):
                 row.append(0)
             else:
                 dist = haversine_distance(df.iloc[i]['Lat'], df.iloc[i]['Lon'], df.iloc[j]['Lat'], df.iloc[j]['Lon'])
-                cost = int(dist * 1000)
-                
-                # Cấm đi từ điểm Lấy hàng (Pickup) sang điểm Giao hàng (Delivery)
-                if df.iloc[i]['Type'] == 'Pickup' and df.iloc[j]['Type'] == 'Delivery':
-                    cost = 9999999 
-                    
-                row.append(cost)
+                row.append(int(dist * 1000)) # Lưu khoảng cách thuần bằng mét
         matrix.append(row)
     return matrix
 
@@ -56,7 +50,6 @@ if "vehicle_df" not in st.session_state or st.session_state.fleet_size != num_ve
 
 edited_vehicles = st.sidebar.data_editor(st.session_state.vehicle_df, use_container_width=True, hide_index=False)
 st.session_state.vehicle_df = edited_vehicles
-
 vehicle_names = edited_vehicles["Biển số xe"].astype(str).tolist()
 vehicle_capacities = edited_vehicles["Tải trọng (Tấn)"].astype(int).tolist()
 
@@ -66,6 +59,20 @@ fuel_cost_per_km = st.sidebar.number_input("Biến phí nhiên liệu (VNĐ/km):
 fixed_vehicle_cost = st.sidebar.number_input("Định phí xuất xe (VNĐ/chuyến):", min_value=0, value=500000, step=50000)
 max_acceptable_cost = st.sidebar.number_input("Mức tối đa chi phí chấp nhận:", min_value=0, value=3000000, step=100000)
 
+st.sidebar.markdown("---")
+st.sidebar.header("📏 3. Giới hạn Vận hành")
+
+# Gợi ý thông minh: Tính giới hạn km bằng ngân sách (Tổng ngân sách / tiền xăng)
+suggested_max_km = int(max_acceptable_cost / fuel_cost_per_km) if fuel_cost_per_km > 0 else 100
+st.sidebar.caption(f"💡 Dựa trên giới hạn ngân sách, xe không nên chạy vượt quá **{suggested_max_km} km**.")
+
+max_distance_km = st.sidebar.number_input(
+    "Giới hạn TỐI ĐA mỗi xe (km):", 
+    min_value=10, 
+    value=80, 
+    step=5,
+    help="Nếu có điểm bốc hàng ở quá xa làm vượt số km này, AI sẽ không cho xe đó đi ghép nữa mà điều một xe rỗng khác từ bãi ra để phục vụ."
+)
 
 # --- PHẦN 1: QUẢN LÝ DỮ LIỆU ĐƠN HÀNG ---
 st.subheader("1. Dữ liệu Đơn hàng & Tọa độ")
@@ -102,22 +109,21 @@ if len(df) >= 2:
     manual_distance = 0
     manual_vehicles = 0
     
-    # Tính toán nếu chạy thủ công: 1 xe chở 1 đơn rồi chạy rỗng về kho
     for i, row in df.iterrows():
         if row['Type'] != 'Depot':
             dist = haversine_distance(depot_lat, depot_lon, row['Lat'], row['Lon'])
-            manual_distance += dist * 2  # Chặng đi + Chặng về rỗng
+            manual_distance += dist * 2
             manual_vehicles += 1
             
     manual_cost = (manual_vehicles * fixed_vehicle_cost) + (manual_distance * fuel_cost_per_km)
 
-    st.info(f"📊 **DỰ TOÁN TRƯỚC TỐI ƯU (Vận hành thủ công):** Cần điều động **{manual_vehicles} xe** | Tổng quãng đường: **{manual_distance:.1f} km** | Tổng chi phí ước tính: **{manual_cost:,.0f} VNĐ**")
+    st.info(f"📊 **DỰ TOÁN GỐC (Vận hành thủ công 1 xe/1 đơn):** Cần điều động **{manual_vehicles} xe** | Tổng quãng đường: **{manual_distance:.1f} km** | Chi phí ước tính: **{manual_cost:,.0f} VNĐ**")
 
-if st.button("🚀 Chạy Tối Ưu Hóa (OR-Tools Solver)"):
+if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
     if len(df) < 2:
         st.warning("Cần ít nhất 2 điểm để chạy.")
     else:
-        with st.spinner("Hệ thống AI đang tính toán tổ hợp và phân tích tài chính..."):
+        with st.spinner("AI đang so sánh chi phí giữa các tổ hợp ghép xe và điều xe mới..."):
             distance_matrix = create_distance_matrix(df)
             
             deliveries = [row['Demand'] if row['Type'] == 'Delivery' else 0 for _, row in df.iterrows()]
@@ -126,15 +132,40 @@ if st.button("🚀 Chạy Tối Ưu Hóa (OR-Tools Solver)"):
             manager = pywrapcp.RoutingIndexManager(len(distance_matrix), num_vehicles, 0)
             routing = pywrapcp.RoutingModel(manager)
 
+            # 1. RÀNG BUỘC KHOẢNG CÁCH (Tạo giới hạn Km)
             def distance_callback(from_index, to_index):
                 return distance_matrix[manager.IndexToNode(from_index)][manager.IndexToNode(to_index)]
+            
+            dist_callback_index = routing.RegisterTransitCallback(distance_callback)
+            routing.AddDimension(
+                dist_callback_index,
+                0,  # Không cho phép slack (thời gian trễ)
+                int(max_distance_km * 1000),  # Giới hạn km quy ra mét
+                True, 
+                'Distance'
+            )
 
-            transit_callback_index = routing.RegisterTransitCallback(distance_callback)
-            routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
+            # 2. RÀNG BUỘC TÀI CHÍNH & LOGIC NGHIỆP VỤ (AI đếm bằng tiền VNĐ)
+            def cost_callback(from_index, to_index):
+                from_node = manager.IndexToNode(from_index)
+                to_node = manager.IndexToNode(to_index)
+                
+                # Cấm đi từ Pickup sang Delivery (Phạt 999 triệu VNĐ để AI né đường này)
+                if df.iloc[from_node]['Type'] == 'Pickup' and df.iloc[to_node]['Type'] == 'Delivery':
+                    return 999999999
+                
+                # Tính chi phí đoạn đường bằng VNĐ
+                dist_m = distance_matrix[from_node][to_node]
+                cost_vnd = int((dist_m / 1000.0) * fuel_cost_per_km)
+                return cost_vnd
 
-            # Ép hệ thống dùng ít xe nhất có thể bằng phí phạt giả định
-            routing.SetFixedCostOfAllVehicles(100000)
+            cost_callback_index = routing.RegisterTransitCallback(cost_callback)
+            # Ép AI tối ưu tìm tổng tiền VNĐ nhỏ nhất
+            routing.SetArcCostEvaluatorOfAllVehicles(cost_callback_index)
+            # Gắn phí xuất xe (Định phí) bằng VNĐ
+            routing.SetFixedCostOfAllVehicles(int(fixed_vehicle_cost))
 
+            # 3. RÀNG BUỘC TẢI TRỌNG (Giao đi và Lấy về)
             def delivery_callback(from_index):
                 return deliveries[manager.IndexToNode(from_index)]
             delivery_callback_index = routing.RegisterUnaryTransitCallback(delivery_callback)
@@ -154,7 +185,7 @@ if st.button("🚀 Chạy Tối Ưu Hóa (OR-Tools Solver)"):
             if solution:
                 total_distance = 0
                 routes = []
-                colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+                colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2']
 
                 m = folium.Map(location=[depot_lat, depot_lon], zoom_start=11)
 
@@ -186,13 +217,16 @@ if st.button("🚀 Chạy Tối Ưu Hóa (OR-Tools Solver)"):
                         
                         previous_index = index
                         index = solution.Value(routing.NextVar(index))
-                        route_distance += routing.GetArcCostForVehicle(previous_index, index, vehicle_id)
+                        
+                        # Tính khoảng cách thực tế từ ma trận km
+                        dist_step = distance_matrix[manager.IndexToNode(previous_index)][manager.IndexToNode(index)]
+                        route_distance += dist_step
 
                     node_index = manager.IndexToNode(index)
                     route_nodes.append(str(df.iloc[node_index]['Name']))
                     route_coords.append([df.iloc[node_index]['Lat'], df.iloc[node_index]['Lon']])
                     
-                    actual_distance = (route_distance - 100000) / 1000 if route_distance > 100000 else 0
+                    actual_distance = route_distance / 1000.0
 
                     if len(route_nodes) > 2:
                         total_distance += actual_distance
@@ -215,22 +249,27 @@ if st.button("🚀 Chạy Tối Ưu Hóa (OR-Tools Solver)"):
                 optimized_cost = (vehicles_used * fixed_vehicle_cost) + (total_distance * fuel_cost_per_km)
                 savings = manual_cost - optimized_cost
                 
-                # --- KIỂM TRA NGÂN SÁCH CHẤP NHẬN ---
                 if optimized_cost <= max_acceptable_cost:
-                    st.success(f"✅ **ĐẠT CHỈ TIÊU CHI PHÍ:** Hệ thống hoạt động dưới mức ngân sách tối đa ({max_acceptable_cost:,.0f} VNĐ).")
+                    st.success(f"✅ **ĐẠT CHỈ TIÊU:** Hệ thống ghép điểm thành công dưới mức ngân sách tối đa.")
                 else:
-                    st.error(f"⚠️ **CẢNH BÁO NGÂN SÁCH:** Chi phí tối ưu ({optimized_cost:,.0f} VNĐ) đang VƯỢT ngân sách cho phép. Hãy cân nhắc từ chối bớt đơn lấy hàng hoặc thay đổi trọng tải xe.")
+                    st.error(f"⚠️ **CẢNH BÁO:** Chi phí tối ưu ({optimized_cost:,.0f} VNĐ) VƯỢT ngân sách cho phép.")
 
                 col1, col2, col3, col4 = st.columns(4)
                 col1.metric("Tổng chi phí Tối ưu", f"{optimized_cost:,.0f} đ", f"-{savings:,.0f} đ", delta_color="inverse")
-                col2.metric("Số xe thực tế sử dụng", f"{vehicles_used} / {num_vehicles} xe", f"-{manual_vehicles - vehicles_used} xe rỗng")
+                col2.metric("Số xe thực tế sử dụng", f"{vehicles_used} / {num_vehicles} xe", f"-{manual_vehicles - vehicles_used} chuyến")
                 col3.metric("Tổng quãng đường", f"{round(total_distance, 2)} km", f"-{round(manual_distance - total_distance, 1)} km")
                 col4.metric("Đơn lấy hàng (Backhaul)", f"{len(df[df['Type'] == 'Pickup'])} đơn ghép")
 
                 st.subheader("Bản đồ điều phối trực quan")
                 st_folium(m, width=1000, height=520, returned_objects=[])
 
-                st.subheader("Chi tiết Lộ trình điều động")
+                st.subheader("Chi tiết Lộ trình & Chỉ số tuân thủ")
                 st.table(pd.DataFrame(routes))
             else:
-                st.error("❌ Không tìm thấy phương án tối ưu!")
+                st.error("❌ Hệ thống AI không tìm được phương án ghép xe thỏa mãn điều kiện!")
+                st.warning("""
+                **Cách khắc phục:**
+                1. **Quá xa:** Có điểm nằm vượt quá 'Giới hạn km mỗi xe' ➔ Hãy tăng giới hạn km lên.
+                2. **Hết xe:** Số điểm bốc hàng xa quá nhiều nhưng số lượng xe không đủ để chạy thẳng từ kho ➔ Hãy tăng 'Số lượng xe điều phối'.
+                3. **Quá tải:** Tải trọng của 1 đơn lớn hơn sức chở của 1 chiếc xe ➔ Kiểm tra lại Tải trọng xe.
+                """)
