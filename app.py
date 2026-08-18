@@ -55,10 +55,15 @@ vehicle_capacities = edited_vehicles["Tải trọng (Tấn)"].astype(int).tolist
 
 st.sidebar.markdown("---")
 st.sidebar.header("💰 2. Cấu hình Chi phí (VNĐ)")
-fuel_cost_per_km = st.sidebar.number_input("Biến phí nhiên liệu (VNĐ/km):", min_value=0, value=5000, step=500)
-fixed_vehicle_cost = st.sidebar.number_input("Định phí xuất xe (VNĐ/chuyến):", min_value=0, value=500000, step=50000)
-max_acceptable_cost = st.sidebar.number_input("Mức tối đa chi phí chấp nhận:", min_value=0, value=3000000, step=100000)
 
+fuel_cost_per_km = st.sidebar.number_input("Biến phí nhiên liệu (VNĐ/km):", min_value=0, value=5000, step=500)
+st.sidebar.caption(f"💵 Đang nhập: **{fuel_cost_per_km:,.0f} VNĐ**")
+
+fixed_vehicle_cost = st.sidebar.number_input("Định phí xuất xe (VNĐ/chuyến):", min_value=0, value=500000, step=50000)
+st.sidebar.caption(f"💵 Đang nhập: **{fixed_vehicle_cost:,.0f} VNĐ**")
+
+max_acceptable_cost = st.sidebar.number_input("Mức tối đa chi phí chấp nhận:", min_value=0, value=3000000, step=100000)
+st.sidebar.caption(f"💵 Đang nhập: **{max_acceptable_cost:,.0f} VNĐ**")
 st.sidebar.markdown("---")
 st.sidebar.header("📏 3. Giới hạn Vận hành")
 
