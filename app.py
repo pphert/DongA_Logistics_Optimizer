@@ -41,14 +41,21 @@ if "fleet_size" not in st.session_state:
 
 num_vehicles = st.sidebar.number_input("Số lượng xe điều phối:", min_value=1, step=1, value=st.session_state.fleet_size)
 
+# --- ĐOẠN CODE MỚI ---
 if "vehicle_df" not in st.session_state or st.session_state.fleet_size != num_vehicles:
     st.session_state.fleet_size = num_vehicles
     st.session_state.vehicle_df = pd.DataFrame({
+        "STT": [i + 1 for i in range(num_vehicles)],  # Đánh số bắt đầu từ 1
         "Biển số xe": [f"51C-{12340 + i}" for i in range(num_vehicles)],
         "Tải trọng (Tấn)": [30] * num_vehicles
     })
 
-edited_vehicles = st.sidebar.data_editor(st.session_state.vehicle_df, use_container_width=True, hide_index=False)
+edited_vehicles = st.sidebar.data_editor(
+    st.session_state.vehicle_df, 
+    use_container_width=True, 
+    hide_index=True,  # Ẩn cột index số 0 mặc định
+    disabled=["STT"]  # Khóa cột STT để người dùng không gõ nhầm
+)
 st.session_state.vehicle_df = edited_vehicles
 vehicle_names = edited_vehicles["Biển số xe"].astype(str).tolist()
 vehicle_capacities = edited_vehicles["Tải trọng (Tấn)"].astype(int).tolist()
