@@ -166,67 +166,15 @@ def get_route_path_osrm(lat1, lon1, lat2, lon2):
     return [[lat1, lon1], [lat2, lon2]]
 
 
-with st.sidebar.expander("⚖️ Phân tích Hòa vốn (Break-even)", expanded=True):
-    # 1. Tự động tính Quãng đường rỗng trung bình (Depot -> Delivery) bằng OSRM
-    avg_empty_km = 40.0  # Mặc định an toàn
+with st.sidebar.expander("⚖️ Phân tích Hòa vốn (Động - Dynamic)", expanded=True):
+    st.info("💡 **Cơ chế mới:** Hệ thống quét riêng rẽ từng điểm Giao hàng, đo khoảng cách thực tế từ điểm đó về Kho để cấp 'Ngân sách km' cho phép đi vòng.")
     
-    if 'df' in locals() and not df.empty:
-        col_type = 'Type' if 'Type' in df.columns else 'Loại điểm'
-        col_lat = 'Vĩ độ' if 'Vĩ độ' in df.columns else 'Lat'
-        col_lon = 'Kinh độ' if 'Kinh độ' in df.columns else 'Lng'
-        
-        depots = df[df[col_type] == 'Depot']
-        deliveries = df[df[col_type] == 'Delivery']
-        
-        if not depots.empty and not deliveries.empty:
-            depot_row = depots.iloc[0]
-            total_dist = 0
-            
-            for _, row in deliveries.iterrows():
-                lat1, lon1 = depot_row[col_lat], depot_row[col_lon]
-                lat2, lon2 = row[col_lat], row[col_lon]
-                
-                # Truyền tọa độ vào hàm gọi Bản đồ thực tế
-                dist_km = get_driving_distance(lat1, lon1, lat2, lon2)
-                total_dist += dist_km
-                
-            # Chia trung bình
-            avg_empty_km = total_dist / len(deliveries)
-            
-    st.text_input(
-        "Quãng đường rỗng trung bình (km):",
-        value=f"{avg_empty_km:.1f} km",
-        disabled=True,
-        help="Hệ thống tự động quét API OSRM (Bản đồ đường bộ) từ Kho đến các điểm Giao hàng."
-    )
-    
-    # 2. Chi phí chạy rỗng tránh được
-    saved_cost = avg_empty_km * fuel_cost_per_km
-    st.text_input(
-        "Chi phí rỗng tránh được (VNĐ):",
-        value=f"{saved_cost:,.0f} đ",
-        disabled=True,
-        help=f"Điểm hòa vốn = {avg_empty_km:.1f} km × {fuel_cost_per_km:,.0f} đ/km. Đây là ngân sách tối đa cho phép để đi vòng."
-    )
-    
-    # 3. Tỷ lệ an toàn lợi nhuận
+    # Tỷ lệ an toàn lợi nhuận
     safety_margin = st.slider(
-        "Ngưỡng cho phép đi vòng (%):",
-        min_value=50, max_value=100, value=80, step=5,
-        help="Để có lợi nhuận, khoảng cách đi vòng phải thấp hơn điểm hòa vốn (Khuyên dùng 70-80%)."
+        "Ngưỡng cho phép đi vòng (% khoảng cách rỗng):",
+        min_value=10, max_value=150, value=60, step=5,
+        help="Ví dụ: Từ Tân Bình chạy thẳng về Kho mất 10km. Nếu set 60%, xe chỉ được phép chạy tối đa 6km để đi tìm điểm Lấy hàng ghép chuyến. Quá 6km -> Hệ thống gọi xe mới!"
     )
-
-# --- TÍNH TOÁN KẾT QUẢ ĐẦU RA ---
-max_del_to_pic_km = avg_empty_km * (safety_margin / 100.0)
-
-# Tổng giới hạn quãng đường chạy ngầm vào thuật toán OR-Tools
-base_round_trip = avg_empty_km * 2
-max_distance_km = int(base_round_trip + max_del_to_pic_km)
-
-st.sidebar.markdown(f"**Khoảng cách TỐI ĐA từ điểm Giao $\\rightarrow$ Lấy:** `{max_del_to_pic_km:.1f} km`")
-st.sidebar.caption(
-    f"*(Luật ghép chuyến: Xe chỉ chạy sang điểm Pickup nếu khoảng cách đường bộ $\le$ {max_del_to_pic_km:.1f} km)*"
-)
 
 # --- PHẦN 1: QUẢN LÝ DỮ LIỆU ĐƠN HÀNG ---
 st.subheader("1. Dữ liệu Đơn hàng & Tọa độ")
@@ -328,10 +276,16 @@ if st.button("🚀 Chạy Tối Ưu Hóa (AI Solver)"):
                 if df.iloc[from_node]['Type'] == 'Pickup' and df.iloc[to_node]['Type'] == 'Delivery':
                     return 999999999
                 
-                # 2.2. LUẬT MỚI: Khóa chặt khoảng cách Giao ➔ Lấy
+                # 2.2. LUẬT MỚI: RÀNG BUỘC ĐỘNG TỪNG ĐIỂM (Dynamic Detour Limit)
                 if df.iloc[from_node]['Type'] == 'Delivery' and df.iloc[to_node]['Type'] == 'Pickup':
-                    if dist_m > (max_del_to_pic_km * 1000):
-                        return 999999999  # Nếu vượt ngưỡng đi vòng cho phép, cấm ghép!
+                    # Đo khoảng cách rỗng từ ĐÚNG điểm Delivery hiện tại về thẳng Kho (luôn là Node 0)
+                    dist_to_depot_m = distance_matrix[from_node][0] 
+                    
+                    # Cấp ngân sách đi vòng riêng cho điểm này
+                    dynamic_max_detour_m = dist_to_depot_m * (safety_margin / 100.0)
+                    
+                    if dist_m > dynamic_max_detour_m:
+                        return 999999999  # Quá xa so với điểm hiện tại? CẤM GHÉP! Đưa xe mới tới.
                 
                 # Tính chi phí đoạn đường bình thường bằng VNĐ
                 cost_vnd = int((dist_m / 1000.0) * fuel_cost_per_km)
